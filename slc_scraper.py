@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import time
 import pymongo
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()  # Load environment variables from .env file
 # PHASE 2: INITIALIZE MONGO
@@ -63,15 +64,38 @@ for job_url in job_urls:
         time.sleep(1.5)
         continue
 
+    date_element = detail_soup.find("li", class_="closedate")
+    
+    if date_element:
+        raw_text = date_element.text.strip()
+        clean_date_str = raw_text.replace("Closing Date:", "").strip() # e.g. "Dec 31, 2026"
+        
+        try:
+            # Convert the text string into an official, calculable date object
+            # %b = Short month name (Dec), %d = Day (31), %Y = Year (2026)
+            expiry_date_object = datetime.strptime(clean_date_str, "%b %d, %Y")
+        except Exception as e:
+            # Fallback if a date is written in a weird format
+            expiry_date_object = None
+    else:
+        expiry_date_object = None
     # STORE THE EXTRACTED DATA IN MONGODB
     job_payload = {
         "title": title,
         "company": company,
-        "job_url": job_url
+        "job_url": job_url,
+        "expiry_date": expiry_date_object
     }
-    print(f"Prepared package for database: {job_payload['title']}")
-    jobs_collection.insert_one(job_payload)
-    print(f"Successfully saved to Cloud Database!")
+
+    # check if the job already exists in the database to avoid duplicates
+    existing_job = jobs_collection.find_one({"job_url": job_url})
+
+    if existing_job:
+        print(f"-> Job already exists in the database. Skipping database insertion")
+    else:
+        print(f"Prepared package for database: {job_payload['title']}")
+        jobs_collection.insert_one(job_payload)
+        print(f"Successfully saved to Cloud Database!")
     
     print("-" * 40)
     # print(f"-> Title: {title}")
@@ -84,5 +108,16 @@ print("\n--- READING LIVE STOREAGE CONTENT FROM MONGO ---")
 all_saved_jobs = jobs_collection.find()
 
 for saved_job in all_saved_jobs:
-    print(f"Database Record -> Title: {saved_job['title']} | Company: {saved_job['company']}")
+    print(f"Database Record -> Title: {saved_job['title']} | Company: {saved_job['company']} | Expiry Date: {saved_job['expiry_date']}")
     print("-" * 50)
+
+
+print("\n--- RUNNING EXPIRATION CLEANER ENGINE ---")
+
+#  Grab the exact date and time of right now
+current_time = datetime.now()
+
+query_filter = {"expiry_date": {"$lt": current_time}}
+delete_result = jobs_collection.delete_many(query_filter)
+
+print(f"Cleanup complete! Automatically removed {delete_result.deleted_count} expired postings from your database.")
