@@ -10,7 +10,7 @@ An automated background ingestion engine designed to aggregate local employment 
 ## Current Worker Modules
 
 - [x] St. Lawrence College (SLC) Board Worker (`slc_scraper.py`)
-- [ ] Queen's University Module
+- [x] Queen's University Module (`queens_scraper.py`)
 - [ ] City Hall Module
 
 ## Setup & Local Installation
